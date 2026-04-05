@@ -1,0 +1,17 @@
+[project]
+name = "aloevera"
+version = "0.1.0"
+description = "Organize and display Plotly figures interactively with ipywidgets"
+requires-python = ">=3.10"
+dependencies = [
+    "ipywidgets>=7.7",
+    "plotly>=5.0",
+    "polars>=1.39.3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pandas"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
