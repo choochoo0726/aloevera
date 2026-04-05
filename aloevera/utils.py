@@ -32,13 +32,11 @@ def to_widget(content):
         return content
 
     # Plotly Figure -> FigureWidget
-    try:
+    # Duck-type check runs before importing plotly to avoid masking ImportErrors.
+    # add_trace + update_layout together are unique to plotly BaseFigure.
+    if hasattr(content, "add_trace") and hasattr(content, "update_layout"):
         import plotly.graph_objects as go
-
-        if isinstance(content, go.Figure):
-            return go.FigureWidget(content)
-    except ImportError:
-        pass
+        return go.FigureWidget(content)
 
     # pandas DataFrame -> HTML table
     try:

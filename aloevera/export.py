@@ -1,6 +1,6 @@
 """Generate standalone HTML for each organizer type.
 
-Every organizer (tabs, accordion, dropdown, scroll) has a corresponding
+Every organizer (tabs, accordion, dropdown, slider) has a corresponding
 ``*_html`` function that returns a self-contained HTML fragment.  The
 fragment uses inline styles and minimal JS so it works when pasted into
 Confluence's /html macro or similar embeds.
@@ -220,18 +220,42 @@ function avrDD_{uid}(idx) {{
 </script>"""
 
 
-def scroll_html(titles: list, contents_html: list, height: str = "400px") -> str:
-    """Generate an HTML scrollable list component."""
+def slider_html(titles: list, contents_html: list) -> str:
+    """Generate an HTML slider-navigator component."""
     uid = _uid()
-    items = []
-    for title, html in zip(titles, contents_html):
-        items.append(
-            f'<div style="margin-bottom:16px;">'
-            f'<h4 style="margin:8px 0 4px 0;">{title}</h4>'
-            f'{html}</div>'
+    panels = []
+    for i, html in enumerate(contents_html):
+        display = 'block' if i == 0 else 'none'
+        panels.append(
+            f'<div class="avr-sl-panel" id="avr-sl-{uid}-{i}" '
+            f'style="display:{display}">{html}</div>'
         )
 
     return f"""\
-<div class="avr-scroll" id="avr-scroll-{uid}" style="overflow-y:auto; height:{height}; border:1px solid #ddd; padding:8px; border-radius:4px;">
-{''.join(items)}
-</div>"""
+<div class="avr-slider" id="avr-slider-{uid}">
+<style>
+  #avr-slider-{uid} .avr-sl-label {{ font-size:13px; color:#555; margin-bottom:6px; font-weight:600; }}
+  #avr-slider-{uid} input[type=range] {{ width:100%; cursor:pointer; }}
+</style>
+<input type="range" min="0" max="{len(titles)-1}" value="0" step="1"
+  oninput="avrSl_{uid}(this.value)">
+<div class="avr-sl-label" id="avr-sl-label-{uid}">{titles[0] if titles else ""}</div>
+{''.join(panels)}
+</div>
+<script>
+function avrSl_{uid}(val) {{
+  var idx = parseInt(val);
+  var titles = {titles!r};
+  document.getElementById('avr-sl-label-{uid}').textContent = titles[idx];
+  var container = document.getElementById('avr-slider-{uid}');
+  container.querySelectorAll('.avr-sl-panel').forEach(function(p,i) {{
+    p.style.display = i===idx ? 'block' : 'none';
+  }});
+  var visible = document.getElementById('avr-sl-{uid}-'+idx);
+  if (visible && window.Plotly) {{
+    visible.querySelectorAll('.plotly-graph-div').forEach(function(d) {{
+      Plotly.Plots.resize(d);
+    }});
+  }}
+}}
+</script>"""

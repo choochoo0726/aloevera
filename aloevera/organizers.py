@@ -14,7 +14,7 @@ from .export import (
     tabs_html,
     accordion_html,
     dropdown_html,
-    scroll_html,
+    slider_html,
 )
 
 
@@ -79,7 +79,7 @@ def accordion(titles, contents):
     _validate_inputs(titles, contents)
 
     children = [to_widget(c) for c in contents]
-    acc = widgets.Accordion(children=children)
+    acc = widgets.Accordion(children=children, selected_index=0)
     for i, title in enumerate(titles):
         acc.set_title(i, title)
 
@@ -111,14 +111,13 @@ def dropdown(titles, contents):
     children = [to_widget(c) for c in contents]
 
     dd = widgets.Dropdown(
-        options=list(enumerate(titles)),
+        options=[(title, i) for i, title in enumerate(titles)],
         description="Select:",
     )
     output = widgets.Box(children=[children[0]])
 
     def _on_change(change):
-        idx = change["new"]
-        output.children = [children[idx]]
+        output.children = [children[change["new"]]]
 
     dd.observe(_on_change, names="value")
     widget = widgets.VBox([dd, output])
@@ -129,19 +128,17 @@ def dropdown(titles, contents):
     return wrap_with_buttons(widget, html)
 
 
-def scroll(titles, contents, height="400px"):
-    """Display contents in a vertically scrollable list.
+def slider(titles, contents):
+    """Navigate contents with a horizontal slider above the content area.
 
-    Each item is shown with its title as a header.  Scroll to browse.
+    Drag the slider to select an item by title and display its content.
 
     Parameters
     ----------
     titles : list of str
-        Section labels shown above each item.
+        Item labels shown on the slider.
     contents : list
         Items to display.
-    height : str, optional
-        CSS height of the scrollable container (default ``'400px'``).
 
     Returns
     -------
@@ -149,29 +146,30 @@ def scroll(titles, contents, height="400px"):
 
     Example
     -------
-    >>> avr.scroll(titles=['A', 'B', 'C'], contents=[fig1, fig2, fig3])
+    >>> avr.slider(titles=['A', 'B', 'C'], contents=[fig1, fig2, fig3])
     """
     _validate_inputs(titles, contents)
-    items = []
-    for title, content in zip(titles, contents):
-        header = widgets.HTML(
-            value=f"<h4 style='margin:8px 0 4px 0;'>{title}</h4>"
-        )
-        child = to_widget(content)
-        items.append(widgets.VBox([header, child]))
+    children = [to_widget(c) for c in contents]
 
-    container = widgets.VBox(
-        children=items,
-        layout=widgets.Layout(
-            overflow_y="auto",
-            height=height,
-            border="1px solid #ddd",
-            padding="8px",
-        ),
+    sel_slider = widgets.SelectionSlider(
+        options=titles,
+        value=titles[0],
+        description="",
+        orientation="horizontal",
+        readout=True,
+        layout=widgets.Layout(width="100%"),
     )
+    content_box = widgets.Box(children=[children[0]])
+
+    def _on_change(change):
+        content_box.children = [children[titles.index(change["new"])]]
+
+    sel_slider.observe(_on_change, names="value")
+
+    container = widgets.VBox([sel_slider, content_box])
 
     html_parts = [content_to_html(c) for c in contents]
-    html = scroll_html(titles, html_parts, height=height)
+    html = slider_html(titles, html_parts)
 
     return wrap_with_buttons(container, html)
 

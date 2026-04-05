@@ -4,9 +4,15 @@ version = "0.1.0"
 description = "Organize and display Plotly figures interactively with ipywidgets"
 requires-python = ">=3.10"
 dependencies = [
+    "anywidget>=0.9.21",
+    "ipykernel>=7.2.0",
     "ipywidgets>=7.7",
+    "jupyter>=1.1.1",
+    "numpy>=2.2.6",
+    "pandas>=2.3.3",
     "plotly>=5.0",
     "polars>=1.39.3",
+    "pyarrow>=23.0.1",
 ]
 
 [project.optional-dependencies]
