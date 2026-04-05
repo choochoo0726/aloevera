@@ -79,7 +79,7 @@ def wrap_with_buttons(widget, html_fragment: str):
         The returned widget also carries ``_export_html`` so that
         nested organizers can be exported recursively.
     """
-    from .export import make_standalone
+    from aloevera.export import make_standalone
 
     full_html = make_standalone(html_fragment)
     fragment_js = _json.dumps(html_fragment)
@@ -144,4 +144,18 @@ def wrap_with_buttons(widget, html_fragment: str):
 
     # Attach HTML so nested organizers can export recursively
     container._export_html = html_fragment
+
+    # Store the HTML fragment as base64 in a hidden marker div so that
+    # export_notebook can find and convert it to a self-contained iframe.
+    # Using a data attribute avoids all JS/rendering issues in the notebook output.
+    try:
+        import base64
+        from IPython.display import display, HTML as _HTML
+        b64 = base64.b64encode(html_fragment.encode()).decode()
+        display(_HTML(
+            f'<div class="avr-nb-export" data-avr-b64="{b64}" style="display:none"></div>'
+        ))
+    except Exception:
+        pass
+
     return container

@@ -8,8 +8,8 @@ standalone ``.html`` file.
 
 import ipywidgets as widgets
 
-from .utils import to_widget, wrap_with_buttons
-from .export import (
+from aloevera.utils import to_widget, wrap_with_buttons
+from aloevera.export import (
     content_to_html,
     tabs_html,
     accordion_html,
