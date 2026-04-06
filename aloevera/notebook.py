@@ -21,12 +21,100 @@ Size optimisations applied during export:
 
 import base64
 import html as _html_lib
+import json as _json
 import re
+import struct
 import subprocess
 import sys
+import uuid as _uuid
 from pathlib import Path
 
 from aloevera.export import make_standalone
+
+
+# Map Plotly's compact dtype strings to (struct_char, item_size_bytes).
+# Plotly stores numeric arrays as base64-encoded little-endian binary blobs
+# when rendering in Jupyter.  Plotly.js can decode these natively, but only
+# when the figure is loaded via its own MIME renderer — not when the data is
+# passed to Plotly.newPlot() as a plain JS object.  We therefore decode bdata
+# back to ordinary Python lists so the serialised JSON uses plain arrays.
+_BDATA_DTYPE_MAP = {
+    'f4': ('f', 4), 'f8': ('d', 8),
+    'i1': ('b', 1), 'i2': ('h', 2), 'i4': ('i', 4), 'i8': ('q', 8),
+    'u1': ('B', 1), 'u2': ('H', 2), 'u4': ('I', 4), 'u8': ('Q', 8),
+}
+
+
+def _decode_bdata(obj):
+    """Recursively decode ``{bdata, dtype}`` typed-array objects to plain lists."""
+    if isinstance(obj, dict):
+        if 'bdata' in obj and 'dtype' in obj:
+            dtype = obj['dtype']
+            if dtype in _BDATA_DTYPE_MAP:
+                fmt_char, item_size = _BDATA_DTYPE_MAP[dtype]
+                raw = base64.b64decode(obj['bdata'])
+                n = len(raw) // item_size
+                return list(struct.unpack_from(f'<{n}{fmt_char}', raw))
+        return {k: _decode_bdata(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_decode_bdata(item) for item in obj]
+    return obj
+
+
+def _preprocess_notebook(nb_path: Path) -> tuple:
+    """Rewrite Plotly JSON outputs as avr-nb-export markers so nbconvert
+    passes them through as HTML instead of falling back to static PNG.
+
+    Returns ``(path_to_use, tmp_path_or_None)``.  The caller must delete
+    ``tmp_path_or_None`` when done (even on error).
+    """
+    with open(nb_path, encoding="utf-8") as f:
+        nb = _json.load(f)
+
+    modified = False
+    for cell in nb.get("cells", []):
+        if cell.get("cell_type") != "code":
+            continue
+        new_outputs = []
+        for output in cell.get("outputs", []):
+            data = output.get("data", {})
+            plotly_data = data.get("application/vnd.plotly.v1+json")
+            if plotly_data is None:
+                new_outputs.append(output)
+                continue
+            # Decode compact bdata typed arrays so Plotly.js can handle the
+            # data when passed via Plotly.newPlot() in the iframe context.
+            plotly_data = _decode_bdata(plotly_data)
+            # Build a deferred-plot fragment identical to what content_to_html()
+            # produces for go.Figure objects, so PLOTLY_INIT_JS handles it.
+            uid = _uuid.uuid4().hex[:8]
+            height = (plotly_data.get("layout") or {}).get("height") or 450
+            fig_json = _json.dumps(plotly_data)
+            fragment = (
+                f'<div class="avr-deferred-plot plotly-graph-div" '
+                f'id="avr-plot-{uid}" style="width:100%;height:{height}px;"></div>'
+                f'<script type="application/json" id="avr-data-{uid}">{fig_json}</script>'
+            )
+            b64 = base64.b64encode(fragment.encode()).decode()
+            marker_html = (
+                f'<div class="avr-nb-export" data-avr-b64="{b64}" '
+                f'style="display:none"></div>'
+            )
+            new_outputs.append({
+                "output_type": "display_data",
+                "data": {"text/html": marker_html},
+                "metadata": {},
+            })
+            modified = True
+        cell["outputs"] = new_outputs
+
+    if not modified:
+        return nb_path, None
+
+    tmp_path = nb_path.parent / (nb_path.stem + ".__avr_tmp__.ipynb")
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        _json.dump(nb, f)
+    return tmp_path, tmp_path
 
 
 def export_notebook(notebook_path: str, output_path: str = None) -> str:
@@ -53,11 +141,16 @@ def export_notebook(notebook_path: str, output_path: str = None) -> str:
     nb_path = Path(notebook_path).resolve()
     out_path = Path(output_path).resolve() if output_path else nb_path.with_suffix(".html")
 
-    subprocess.run(
-        [sys.executable, "-m", "jupyter", "nbconvert",
-         "--to", "html", "--output", str(out_path), str(nb_path)],
-        check=True,
-    )
+    convert_path, tmp_path = _preprocess_notebook(nb_path)
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "jupyter", "nbconvert",
+             "--to", "html", "--output", str(out_path), str(convert_path)],
+            check=True,
+        )
+    finally:
+        if tmp_path is not None and tmp_path.exists():
+            tmp_path.unlink()
 
     html = out_path.read_text(encoding="utf-8")
     html = _inject_sidebar(html)
